@@ -264,36 +264,36 @@ int main(int argc, char * argv[]) {
 
 
     for (int kt = 1; kt <= Kt; kt++) {
-        //std::cout<<kt<<std::endl;
-        start_time = MPI_Wtime();
+	// Compute fluxes in border elements
+        // Left
+	start_time = MPI_Wtime();
         get_left_border(C, B, nEl_local, N, u_left);
         calc_time += MPI_Wtime() - start_time;
                
+	// Non blocking send
         start_time = MPI_Wtime();
         MPI_Isend(u_left+nEl_local, 1, MPI_DOUBLE, (rank + 1) % size, 0, MPI_COMM_WORLD, &request_send_right);
         MPI_Irecv(u_left, 1, MPI_DOUBLE, (rank - 1 + size) % size, 0, MPI_COMM_WORLD, &request_recv_left);
       
         mpi_time += MPI_Wtime() - start_time;
 
+	// Right
         start_time = MPI_Wtime();
         get_right_border(C, B, nEl_local, N, u_right);
         calc_time += MPI_Wtime() - start_time;
 
+	// Non blocking send
         start_time = MPI_Wtime();
         MPI_Isend(u_right, 1, MPI_DOUBLE, (rank - 1 + size) % size, 1, MPI_COMM_WORLD, &request_send_left);
         MPI_Irecv(u_right+nEl_local, 1, MPI_DOUBLE, (rank + 1) % size, 1, MPI_COMM_WORLD, &request_recv_right);
         mpi_time += MPI_Wtime() - start_time;
                          
+	// Compute inner fluxes
         start_time = MPI_Wtime();
         get_right_inner(C, B, nEl_local, N, u_right);
         get_left_inner(C, B, nEl_local, N, u_left);
         get_flux_inner(u_left, u_right, B, nEl_local, N, flux, F);
-        //       std::cout << "u_left = ";
-        //       for (int l=0;l < nEl_local+1;l++) {
-        //           std::cout << u_left[l] << " ";
-        //       }
-        //       std::cout << std::endl;
-
+	    
         for (k = 1; k < nEl_local - 1; k++) {
             if (k % 100 == 0) {
                 MPI_Test(&request_send_left, &flag, MPI_STATUS_IGNORE);
@@ -301,26 +301,12 @@ int main(int argc, char * argv[]) {
 
             // r = C.row(k)
             cblas_dcopy(N+1, C + k * (N+1), 1, r, 1);
-            //  std::cout << "r = ";
-            //  for (int l=0;l < N+1;l++) {
-            //      std::cout << r[l] << " ";
-            //  }
-            //  std::cout << std::endl;
-            // k1 = F.row(k)
+            
+	    // k1 = F.row(k)
             cblas_dcopy(N+1, F + k * (N+1), 1, k1, 1);
-            // std::cout << "F.row(k) = ";
-            // for (int l=0;l < N+1;l++) {
-            //     std::cout << k1[l] << " ";
-            // }
-            // std::cout << std::endl;
-
+            
             f(r,k1);
-            //   std::cout << "k1 = ";
-            //   for (int l=0;l < N+1;l++) {
-            //       std::cout << k1[l] << " ";
-            //   }
-            //   std::cout << std::endl;
-
+            
             // r = r + 0.5*dt*k1
             cblas_daxpy(N + 1, dt * 0.5, k1, 1, r, 1);
             // k2 = F.row(k)
@@ -329,7 +315,8 @@ int main(int argc, char * argv[]) {
 
             // r = C.row(k)
             cblas_dcopy(N+1, C + k * (N+1), 1, r, 1);
-            // r = r+dt*0.5*k2;
+            
+	    // r = r+dt*0.5*k2;
             cblas_daxpy(N+1, dt * 0.5, k2, 1, r, 1);
             cblas_dcopy(N+1, F + k * (N+1), 1, k3, 1);
             f(r,k3);
@@ -339,18 +326,11 @@ int main(int argc, char * argv[]) {
             cblas_daxpy(N+1, dt, k3, 1, r, 1);
             cblas_dcopy(N+1, F + k * (N+1), 1, k4, 1);
             f(r,k4);
-
-            //  cblas_dcopy(N+1, C + k * (N+1), 1, r, 1);
-                           
+		
             cblas_daxpy(N + 1, dt/6, k1, 1, C + k * (N+1), 1);
             cblas_daxpy(N + 1, dt/3, k2, 1, C + k * (N+1), 1);
             cblas_daxpy(N + 1, dt/3, k3, 1, C + k * (N+1), 1);
             cblas_daxpy(N + 1, dt/6, k4, 1, C + k * (N+1), 1);
-
-           
-            //  std::cout<<std::endl;
-
-//            cblas_dcopy(N+1, r, 1, C + k * (N+1), 1);
         }
 
         calc_time += MPI_Wtime() - start_time;
